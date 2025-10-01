@@ -1,0 +1,190 @@
+-- [ STEALTH HUB V25 - OPTIMIZED ]
+
+-- A. INISIALISASI DAN KONFIGURASI
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris") 
+local TweenService = game:GetService("TweenService") 
+local p = Players.LocalPlayer 
+local gui_target = p:WaitForChild("PlayerGui")
+
+-- KONFIGURASI
+local DEFAULT_WALKSPEED = 16
+local MAIN_COLOR = Color3.fromRGB(0, 255, 255) 
+local FAKE_RESPAWN_DELAY = 0.3 
+
+-- STATUS
+local tp_pos = nil 
+local is_stealth_mode = false 
+local phys_btn = nil -- Variabel tombol untuk sinkronisasi
+
+-- B. FUNGSI UTILITY & NOTIFIKASI
+
+local function get_parts()
+    local char = p.Character or p.CharacterAdded:Wait() 
+    if not char then return nil, nil, nil end
+    local h = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not h or not hrp then return nil, nil, nil end
+    return h, hrp, char 
+end
+
+local function show_notification(message, color)
+    if not gui_target then return end
+    
+    local size = UDim2.new(0, 250, 0, 35)
+    local start_pos = UDim2.new(0, 10, 0.95, 45) 
+    local target_pos = UDim2.new(0, 10, 0.95, -40)
+    
+    local frame = Instance.new("Frame")
+    frame.Size, frame.Position = size, start_pos
+    frame.BackgroundColor3 = color or MAIN_COLOR
+    frame.BackgroundTransparency = 0
+    frame.BorderSizePixel = 0
+    frame.Parent = gui_target
+    
+    -- Visual Enhancement
+    Instance.new("UIStroke", frame).Color = Color3.new(1, 1, 1)
+    Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 5) 
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.Text, label.Font, label.TextSize = message, Enum.Font.SourceSansBold, 16 
+    label.Parent = frame
+    
+    -- Animation: Slide In
+    local info_in = TweenInfo.new(0.4, Enum.EasingStyle.OutQuart, Enum.EasingDirection.Out)
+    TweenService:Create(frame, info_in, {Position = target_pos}):Play()
+    
+    -- Animation: Slide Out & Cleanup
+    Debris:AddItem(frame, 3) 
+    task.spawn(function()
+        task.wait(2.5) 
+        local info_out = TweenInfo.new(0.5, Enum.EasingStyle.InQuad, Enum.EasingDirection.In)
+        TweenService:Create(frame, info_out, {Position = start_pos, BackgroundTransparency = 1}):Play()
+    end)
+end
+
+-- C. FUNGSI UTAMA LOGIKA
+
+local function save_tp(btn)
+    local _, hrp = get_parts()
+    if hrp then
+        tp_pos = hrp.CFrame 
+        btn.Text = "SAVED"
+        show_notification("Base Position SAVED!", Color3.fromRGB(0, 255, 0))
+    else
+        show_notification("SAVE GAGAL!", Color3.fromRGB(255, 0, 0))
+    end
+end
+
+local function toggle_stealth_mode(btn)
+    local h, hrp, char = get_parts()
+    if not hrp or not char then 
+        show_notification("STEALTH GAGAL!", Color3.fromRGB(255, 0, 0))
+        return 
+    end
+    
+    is_stealth_mode = not is_stealth_mode
+    
+    if is_stealth_mode then
+        btn.Text = "STEALTH ON"
+        if h then 
+            h.WalkSpeed = 0 
+            h.PlatformStand = true
+        end
+        hrp.CanCollide = false 
+        show_notification("STEALTH MODE: ON (Ready to Grab)", MAIN_COLOR)
+    else
+        btn.Text = "PHYS OFF"
+        if h then
+            h.WalkSpeed = DEFAULT_WALKSPEED
+            h.PlatformStand = false
+        end
+        hrp.CanCollide = true 
+        show_notification("STEALTH MODE: OFF (Sync)", Color3.fromRGB(255, 255, 0))
+    end
+end
+
+local function execute_stealth_tp()
+    local h, hrp, char = get_parts()
+    
+    if not hrp or not tp_pos or not is_stealth_mode or not h then 
+        show_notification("GO! GAGAL (Need Setup)", Color3.fromRGB(255, 0, 0))
+        return 
+    end
+
+    show_notification("GO! Running Fake Death...", MAIN_COLOR)
+    
+    -- 1. FAKE DEATH
+    h:ChangeState(Enum.HumanoidStateType.Dead)
+    
+    -- 2. MICRO DELAY
+    task.wait(FAKE_RESPAWN_DELAY) 
+    
+    -- 3. TELEPORT
+    char:SetPrimaryPartCFrame(tp_pos)
+    
+    -- 4. Sync (Turn Off Stealth)
+    if phys_btn and is_stealth_mode then
+        toggle_stealth_mode(phys_btn)
+    end
+    
+    show_notification("TELEPORT SUCCESS! (Item Aman)", Color3.fromRGB(0, 255, 0))
+end
+
+-- D. IMPLEMENTASI GUI
+
+local sg = Instance.new("ScreenGui")
+sg.Name = ("StealthHub_V25") 
+sg.ResetOnSpawn = false
+sg.Parent = gui_target
+
+local action_bar = Instance.new("Frame")
+action_bar.Name = "action_bar"
+action_bar.Size = UDim2.new(0, 80, 0, 150) 
+action_bar.Position = UDim2.new(0, 10, 0.4, 0)
+action_bar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+action_bar.BorderColor3 = MAIN_COLOR
+action_bar.BorderSizePixel = 1
+action_bar.Parent = sg
+action_bar.ZIndex, action_bar.Visible, action_bar.Active, action_bar.Draggable = 100, true, true, true 
+
+-- Layout
+local layout = Instance.new("UIListLayout")
+layout.FillDirection = Enum.FillDirection.Vertical
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.Padding = UDim.new(0, 5)
+layout.Parent = action_bar 
+
+-- Button Factory
+local function create_bar_button(name, callback, custom_name)
+    local btn = Instance.new("TextButton")
+    btn.Name = custom_name or (name:gsub("%s+", ""):lower() .. "_btn")
+    btn.Size = UDim2.new(1, 0, 0, 45) 
+    btn.Text = name
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    btn.TextColor3 = MAIN_COLOR
+    btn.Font, btn.TextSize, btn.BorderSizePixel = Enum.Font.SourceSansBold, 14, 0
+    btn.Parent = action_bar
+    
+    btn.MouseButton1Click:Connect(function()
+        if btn.Name == "save_btn" or btn.Name == "phys_btn" then
+            callback(btn)
+        else
+            callback()
+        end
+    end) 
+    
+    return btn
+end
+
+-- TOMBOL
+local save_btn = create_bar_button("SAVE TP", save_tp, "save_btn")
+phys_btn = create_bar_button("PHYS OFF", toggle_stealth_mode, "phys_btn") 
+local go_btn = create_bar_button("GO! TP", execute_stealth_tp, "go_btn")
+
+-- Tunggu karakter jika skrip dieksekusi terlalu cepat
+if not p.Character then p.CharacterAdded:Wait() end
