@@ -1,0 +1,242 @@
+--========================================================
+-- [ A. INISIALISASI DAN KONFIGURASI ]
+--========================================================
+local p            = game:GetService("Players").LocalPlayer
+local gui_target   = p.PlayerGui
+local rs           = game:GetService("RunService")
+
+-- KONFIGURASI INTI
+local DEFAULT_WALKSPEED   = 16
+local MAIN_COLOR          = Color3.fromRGB(0, 255, 255)
+
+-- KONFIGURASI IVT (Instant Velocity Teleport)
+local MAX_VELOCITY        = 40000
+local SAFE_HIPHEIGHT      = 0.5
+local DEFAULT_HIPHEIGHT   = 2
+
+-- Variabel Status
+local tp_pos        = nil
+local is_ghost_mode = false
+
+
+--========================================================
+-- [ B. FUNGSI UTILITY & SAFETY ]
+--========================================================
+local function get_fresh_parts()
+    local current_char = p.Character
+    if not current_char then return nil, nil, nil end
+
+    local current_h   = current_char:FindFirstChildOfClass("Humanoid")
+    local current_hrp = current_char:FindFirstChild("HumanoidRootPart")
+
+    if not current_h or not current_hrp then return nil, nil, nil end
+    return current_h, current_hrp, current_char
+end
+
+-- Deklarasi fungsi utama
+local execute_ivt_tp
+local toggle_phantom_mode
+local save_tp
+
+
+--========================================================
+-- [ C. FUNGSI UTAMA LOGIKA ]
+--========================================================
+
+-- FUNGSI SAVE TP
+save_tp = function(btn)
+    local _, hrp_current = get_fresh_parts()
+
+    if hrp_current then
+        tp_pos   = hrp_current.CFrame
+        btn.Text = "SAVED"
+        warn("TP: Posisi Base Tersimpan!")
+    else
+        warn("TP GAGAL: Karakter tidak siap!")
+    end
+end
+
+
+-- FUNGSI TOGGLE PHANTOM MODE (Invisibilitas & Intangibilitas)
+toggle_phantom_mode = function(btn)
+    local h, hrp, char = get_fresh_parts()
+    if not hrp or not char then
+        warn("PHANTOM MODE GAGAL: Tidak ada HRP/Karakter.")
+        return
+    end
+
+    is_ghost_mode = not is_ghost_mode
+
+    if is_ghost_mode then
+        btn.Text = "PHANTOM ON"
+        warn("PHANTOM MODE AKTIF: Invisibilitas dan Intangibilitas Mutlak.")
+
+        -- Hapus Humanoid
+        if h then h:Destroy() end
+
+        -- Loop untuk membuat karakter tidak terlihat & tidak bertumbukan
+        for _, part in pairs(char:GetChildren()) do
+            if part:IsA("BasePart") or part:IsA("Decal") or part:IsA("Accessory") then
+                part.Transparency = 1
+                part.CastShadow   = false
+                part.CanCollide   = false
+            end
+        end
+        hrp.CanCollide = false
+
+    else
+        btn.Text = "PHYS OFF"
+        warn("SINKRONISASI: Mencoba memulihkan karakter dan Humanoid.")
+
+        -- Loop untuk mengembalikan karakter
+        for _, part in pairs(char:GetChildren()) do
+            if part:IsA("BasePart") or part:IsA("Decal") or part:IsA("Accessory") then
+                part.Transparency = 0
+                part.CastShadow   = true
+            end
+        end
+
+        -- Pulihkan Humanoid dengan Safety Loop
+        if not char:FindFirstChildOfClass("Humanoid") then
+            local new_h = Instance.new("Humanoid")
+            new_h.Parent   = char
+            new_h.WalkSpeed = DEFAULT_WALKSPEED
+
+            local recovery_timeout = tick() + 1
+            while not char:FindFirstChildOfClass("Humanoid") and tick() < recovery_timeout do
+                rs.Heartbeat:Wait()
+                if not char:FindFirstChildOfClass("Humanoid") then
+                    new_h          = Instance.new("Humanoid")
+                    new_h.Parent   = char
+                    new_h.WalkSpeed = DEFAULT_WALKSPEED
+                end
+            end
+        end
+
+        -- Pulihkan Fisika
+        hrp.CanCollide = true
+    end
+end
+
+
+-- FUNGSI INSTANT VELOCITY TELEPORT (IVT) - Anti-Respawn
+execute_ivt_tp = function()
+    local h, hrp, char = get_fresh_parts()
+    if not hrp or not tp_pos or not char then
+        warn("IVT GAGAL: Posisi Base atau HRP tidak siap!")
+        return
+    end
+
+    if not is_ghost_mode then
+        warn("IVT GAGAL: Aktifkan MODE PHANTOM (PHANTOM ON) dulu!")
+        return
+    end
+
+    warn("IVT: Memulai Teleportasi Anti-Respawn...")
+
+    local target_pos  = tp_pos.Position
+    local current_pos = hrp.Position
+    local direction   = (target_pos - current_pos).Unit
+    local distance    = (target_pos - current_pos).Magnitude
+
+    -- 1. Ambil Kontrol Jaringan (Anti-Rollback)
+    hrp:SetNetworkOwner(p)
+
+    -- 2. Manipulasi HipHeight
+    local human = char:FindFirstChildOfClass("Humanoid")
+    if human then
+        human.HipHeight = SAFE_HIPHEIGHT
+    end
+
+    -- 3. Terapkan Kecepatan Brutal
+    hrp.Velocity = direction * MAX_VELOCITY
+
+    -- 4. Jeda Mikro Hingga Tiba
+    repeat
+        rs.Heartbeat:Wait()
+    until (hrp.Position - current_pos).Magnitude >= distance * 0.9 
+        or (hrp.Position - target_pos).Magnitude < 5
+
+    -- 5. Pendaratan Aman
+    hrp.Velocity = Vector3.new(0, 0, 0)
+    rs.Heartbeat:Wait()
+
+    -- 6. Final CFrame Correction
+    char:SetPrimaryPartCFrame(tp_pos)
+
+    -- 7. Pulihkan HipHeight & Lepaskan Kontrol Jaringan
+    if human then
+        human.HipHeight = DEFAULT_HIPHEIGHT
+    end
+    hrp:SetNetworkOwner(nil)
+
+    -- 8. Sinkronisasi Penuh (Matikan PHANTOM MODE)
+    local phys_btn = action_bar:FindFirstChild("phys_btn")
+    if phys_btn and is_ghost_mode then
+        toggle_phantom_mode(phys_btn)
+    end
+
+    warn("IVT Selesai! Resiko Respawn Dihilangkan.")
+end
+
+
+--========================================================
+-- [ D. IMPLEMENTASI GUI (PERMANEN - V20) ]
+--========================================================
+local sg = Instance.new("ScreenGui")
+sg.Name          = "PhantomHub_IVT"
+sg.ResetOnSpawn  = false
+sg.Parent        = p.PlayerGui
+sg.Modal         = true
+
+local action_bar = Instance.new("Frame")
+action_bar.Name              = "action_bar"
+action_bar.Size              = UDim2.new(0, 200, 0, 40)
+action_bar.Position          = UDim2.new(1, -210, 1, -50)
+action_bar.BackgroundColor3  = Color3.fromRGB(10, 10, 10)
+action_bar.BorderColor3      = MAIN_COLOR
+action_bar.BorderSizePixel   = 1
+action_bar.Parent            = sg
+action_bar.ZIndex            = 100
+action_bar.Visible           = true
+action_bar.Active            = true
+action_bar.Draggable         = true
+
+
+--========================================================
+-- [ E. FUNGSI TOMBOL DI ACTION BAR ]
+--========================================================
+local function create_bar_button(name, posx_offset, callback)
+    local btn = Instance.new("TextButton")
+    btn.Name              = name:gsub("%s+", ""):lower() .. "_btn"
+    btn.Size              = UDim2.new(0, 60, 1, 0)
+    btn.Position          = UDim2.new(0, posx_offset, 0, 0)
+    btn.Text              = name
+    btn.BackgroundColor3  = Color3.fromRGB(30, 30, 30)
+    btn.TextColor3        = MAIN_COLOR
+    btn.BorderSizePixel   = 0
+    btn.Parent            = action_bar
+
+    btn.MouseButton1Click:Connect(function()
+        warn("DEBUG V20: Tombol '" .. name .. "' diklik.")
+
+        if name == "SAVE" or name == "PHYS OFF" or name == "PHANTOM ON" then
+            callback(btn)
+        else
+            callback()
+        end
+    end)
+
+    return btn
+end
+
+
+--========================================================
+-- [ F. PENEMPATAN TOMBOL ]
+--========================================================
+local save_btn = create_bar_button("SAVE", 0, save_tp)
+
+local phys_btn = create_bar_button("PHYS OFF", 70, toggle_phantom_mode)
+phys_btn.Name  = "phys_btn"
+
+create_bar_button("GO!", 140, execute_ivt_tp)
