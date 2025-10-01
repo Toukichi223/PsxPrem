@@ -1,0 +1,115 @@
+local p = game:GetService("Players").LocalPlayer 
+local c = p.Character or p.CharacterAdded:Wait() 
+local h = c:FindFirstChildOfClass("Humanoid")
+local hrp = c:WaitForChild("HumanoidRootPart")
+local gui_target = p.PlayerGui 
+local rs = game:GetService("RunService") -- RunService untuk stabilitas Android
+
+local DEFAULT_WALKSPEED = 16 
+local HIGH_WALKSPEED = 100 
+local tp_pos = nil 
+
+-- [1] Membuat GUI Stealth (Nama Acak & Minimalis)
+local sg = Instance.new("ScreenGui")
+sg.Name = ("MobileHub_" .. tostring(math.random(100, 999))) 
+sg.ResetOnSpawn = false
+sg.Parent = gui_target
+
+local main_frame = Instance.new("Frame", sg)
+main_frame.Size = UDim2.new(0, 200, 0, 190) -- Diperbesar agar tombol HIDE muat
+main_frame.Position = UDim2.new(0.35, 0, 0.35, 0)
+
+-- Perbaikan Visual & Input KRITIS (V12.0)
+main_frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35) -- Warna latar lebih jelas
+main_frame.BorderColor3 = Color3.fromRGB(200, 200, 200) 
+main_frame.BorderSizePixel = 1 
+main_frame.Active = true -- Memastikan frame bisa menerima input klik
+main_frame.ZIndex = 10  -- Memastikan frame berada di lapisan teratas
+
+local title_label = Instance.new("TextLabel", main_frame)
+title_label.Size = UDim2.new(1, 0, 0, 30)
+title_label.Text = "Belix Hub v12.0 (Final Fix)"
+title_label.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+title_label.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- [2] Fungsi Bantuan Tombol (Parent Dibuat Eksplisit)
+local function create_button(name, posy, callback)
+    local btn = Instance.new("TextButton")
+    
+    btn.Size = UDim2.new(0, 180, 0, 30)
+    btn.Position = UDim2.new(0, 10, 0, posy)
+    btn.Text = name
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BorderSizePixel = 0
+    
+    btn.Parent = main_frame -- <--- INDUK DITETAPKAN DI SINI
+    
+    btn.MouseButton1Click:Connect(function()
+        callback()
+    end)
+    return btn
+end
+
+-- [3] FUNGSI HIDE/SHOW (Baru)
+local function toggle_visibility()
+    sg.Enabled = not sg.Enabled 
+    warn("GUI Visibility: " .. tostring(sg.Enabled))
+end
+
+-- [4] FUNGSI TP2 (TIME-WARP) - Dioptimalkan untuk Android
+local function execute_tp_time_warp()
+    if tp_pos then
+        local original_speed = h.WalkSpeed
+        local TimeScale = game:GetService("TweenService")
+        local current_time_scale = 1 
+
+        if TimeScale and TimeScale.PlaybackSpeed then 
+            current_time_scale = TimeScale.PlaybackSpeed
+            TimeScale.PlaybackSpeed = 0.05 
+        end
+        
+        h.WalkSpeed = HIGH_WALKSPEED 
+        c:SetPrimaryPartCFrame(tp_pos) 
+        
+        for i = 1, 5 do
+             c:SetPrimaryPartCFrame(tp_pos)
+             rs.Heartbeat:Wait() 
+        end
+        
+        if TimeScale and TimeScale.PlaybackSpeed then 
+            TimeScale.PlaybackSpeed = current_time_scale 
+        end
+        h.WalkSpeed = original_speed
+        
+        warn("TP: Berhasil Pindah V12.0! Cek posisi.")
+    else
+        warn("TP: Simpan posisi dulu!")
+    end
+end
+
+-- [5] FUNGSI HIGH SPEED - Dioptimalkan untuk Android
+local function toggle_highspeed()
+    if h.WalkSpeed > DEFAULT_WALKSPEED then
+        h.WalkSpeed = DEFAULT_WALKSPEED
+        warn("HIGH SPEED: Dinonaktifkan!")
+    else
+        warn("HIGH SPEED: Diaktifkan!")
+        spawn(function()
+            while h.WalkSpeed == DEFAULT_WALKSPEED do
+                h.WalkSpeed = HIGH_WALKSPEED
+                rs.Heartbeat:Wait()
+            end
+        end)
+    end
+end
+
+-- [6] PENEMPATAN TOMBOL
+create_button("TP (Save)", 40, function()
+    tp_pos = hrp.CFrame
+    warn("TP: Posisi Tersimpan V12.0!")
+end)
+
+create_button("TP2 (Go)", 80, execute_tp_time_warp)
+create_button("HIGH SPEED", 120, toggle_highspeed)
+create_button("HIDE / SHOW", 160, toggle_visibility) 
