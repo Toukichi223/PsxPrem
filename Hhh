@@ -1,0 +1,138 @@
+local p = game:GetService("Players").LocalPlayer 
+local gui_target = p.PlayerGui 
+local rs = game:GetService("RunService")
+
+local DEFAULT_WALKSPEED = 16 
+local HIGH_WALKSPEED = 100 
+local tp_pos = nil -- Posisi Tersimpan (Base Anda)
+
+-- [1] Membuat GUI (Visual Stabil + Input Fix)
+local sg = Instance.new("ScreenGui")
+sg.Name = ("MobileHub_HeistV15" .. tostring(math.random(100, 999))) 
+sg.ResetOnSpawn = false
+sg.Parent = gui_target
+
+local main_frame = Instance.new("Frame", sg)
+main_frame.Size = UDim2.new(0, 200, 0, 190) 
+main_frame.Position = UDim2.new(0.35, 0, 0.35, 0)
+main_frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25) 
+main_frame.BorderColor3 = Color3.fromRGB(255, 255, 255)
+main_frame.BorderSizePixel = 2
+main_frame.Active = true -- Perbaikan Input
+main_frame.ZIndex = 10 
+
+local title_label = Instance.new("TextLabel", main_frame)
+title_label.Size = UDim2.new(1, 0, 0, 30)
+title_label.Text = "Belix Hub v15.0 (Heist Ready)"
+title_label.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+title_label.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+-- [2] FUNGSI GET FRESH PARTS (PENTING untuk stabilitas)
+local function get_fresh_parts()
+    local current_char = p.Character
+    if not current_char then return nil, nil, nil end
+    
+    local current_h = current_char:FindFirstChildOfClass("Humanoid")
+    local current_hrp = current_char:FindFirstChild("HumanoidRootPart")
+    
+    if not current_h or not current_hrp then return nil, nil, nil end
+    
+    return current_h, current_hrp, current_char 
+end
+
+-- [3] Fungsi Bantuan Tombol
+local function create_button(name, posy, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 180, 0, 30)
+    btn.Position = UDim2.new(0, 10, 0, posy)
+    btn.Text = name
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BorderSizePixel = 0
+    btn.Parent = main_frame
+    btn.MouseButton1Click:Connect(function()
+        callback()
+    end)
+    return btn
+end
+
+-- [4] FUNGSI HIDE/SHOW
+local function toggle_visibility()
+    sg.Enabled = not sg.Enabled 
+    warn("GUI Visibility: " .. tostring(sg.Enabled))
+end
+
+-- [5] FUNGSI TP (Save)
+local function save_tp()
+    local h_current, hrp_current = get_fresh_parts()
+    if hrp_current then
+        tp_pos = hrp_current.CFrame
+        warn("TP: Posisi Base Tersimpan!")
+    else
+        warn("TP GAGAL: Karakter tidak siap!")
+    end
+end
+
+-- [6] FUNGSI TP2 (GO) - NON-RESPAWN & TIME-WARP
+local function execute_tp_time_warp()
+    local h_current, hrp_current, char_current = get_fresh_parts()
+    if not hrp_current or not h_current then return end
+
+    if tp_pos then
+        local original_speed = h_current.WalkSpeed
+        local TimeScale = game:GetService("TweenService")
+        local current_time_scale = 1 
+
+        -- TRICK: Slow Motion
+        if TimeScale and TimeScale.PlaybackSpeed then 
+            current_time_scale = TimeScale.PlaybackSpeed
+            TimeScale.PlaybackSpeed = 0.05 
+        end
+        
+        h_current.WalkSpeed = HIGH_WALKSPEED 
+        char_current:SetPrimaryPartCFrame(tp_pos) 
+        
+        -- TRICK: Spam TP untuk menghindari Rollback
+        for i = 1, 5 do
+             char_current:SetPrimaryPartCFrame(tp_pos)
+             rs.Heartbeat:Wait() 
+        end
+        
+        -- Kembali Normal
+        if TimeScale and TimeScale.PlaybackSpeed then 
+            TimeScale.PlaybackSpeed = current_time_scale 
+        end
+        h_current.WalkSpeed = original_speed
+        
+        warn("TP: Pindah Berhasil! Cek barang curian Anda.")
+    else
+        warn("TP: Simpan posisi base Anda dulu!")
+    end
+end
+
+-- [7] FUNGSI HIGH SPEED
+local function toggle_highspeed()
+    local h_current, hrp_current = get_fresh_parts()
+    if not h_current then return end
+
+    if h_current.WalkSpeed > DEFAULT_WALKSPEED then
+        h_current.WalkSpeed = DEFAULT_WALKSPEED
+        warn("HIGH SPEED: Dinonaktifkan!")
+    else
+        warn("HIGH SPEED: Diaktifkan!")
+        spawn(function()
+            local h_check, hrp_check = get_fresh_parts()
+            while h_check and h_check.WalkSpeed == DEFAULT_WALKSPEED do
+                h_check.WalkSpeed = HIGH_WALKSPEED
+                rs.Heartbeat:Wait()
+                h_check, hrp_check = get_fresh_parts()
+            end
+        end)
+    end
+end
+
+-- [8] PENEMPATAN TOMBOL
+create_button("TP (Save BASE)", 40, save_tp)
+create_button("TP2 (GO NOW!)", 80, execute_tp_time_warp)
+create_button("HIGH SPEED", 120, toggle_highspeed)
+create_button("HIDE / SHOW", 160, toggle_visibility)
