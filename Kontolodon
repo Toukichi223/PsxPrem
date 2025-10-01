@@ -1,0 +1,177 @@
+-- [ A. INISIALISASI DAN KONFIGURASI ]
+local p = game:GetService("Players").LocalPlayer 
+local rs = game:GetService("RunService")
+
+-- KONFIGURASI INTI
+local DEFAULT_WALKSPEED = 16
+local MAIN_COLOR = Color3.fromRGB(0, 255, 255) 
+
+-- KONFIGURASI IVT (Instant Velocity Teleport)
+local MAX_VELOCITY = 40000 -- Kecepatan Brutal untuk Teleportasi Instan
+local SAFE_HIPHEIGHT = 0.5 -- Mengurangi HipHeight untuk menghindari tabrakan saat mendarat
+local DEFAULT_HIPHEIGHT = 2 -- Tinggi badan normal
+
+-- Variabel Status
+local tp_pos = nil 
+local is_ghost_mode = false 
+local action_bar -- deklarasi global supaya bisa dipanggil fungsi
+
+-- [ B. FUNGSI UTILITY & SAFETY ]
+local function get_fresh_parts()
+    local current_char = p.Character
+    if not current_char then return nil, nil, nil end
+    local current_h = current_char:FindFirstChildOfClass("Humanoid")
+    local current_hrp = current_char:FindFirstChild("HumanoidRootPart")
+    if not current_h or not current_hrp then return nil, nil, nil end
+    return current_h, current_hrp, current_char 
+end
+
+-- Deklarasi fungsi utama
+local execute_ivt_tp 
+local toggle_ghost_mode
+local save_tp
+
+-- [ C. FUNGSI UTAMA LOGIKA ]
+
+-- FUNGSI SAVE TP
+save_tp = function(btn)
+    local _, hrp_current = get_fresh_parts()
+    if hrp_current then
+        tp_pos = hrp_current.CFrame 
+        btn.Text = "SAVED"
+        warn("TP: Posisi Base Tersimpan!")
+    else
+        warn("TP GAGAL: Karakter tidak siap!")
+    end
+end
+
+-- FUNGSI TOGGLE GHOST MODE (Untuk Base Lock Bypass)
+toggle_ghost_mode = function(btn)
+    local h, hrp = get_fresh_parts()
+    if not hrp then 
+        warn("GHOST MODE GAGAL: Tidak ada HRP.")
+        return 
+    end
+    
+    is_ghost_mode = not is_ghost_mode
+    
+    if is_ghost_mode then
+        btn.Text = "GHOST ON"
+        warn("MODE GHOST AKTIF: Humanoid dihapus (Tidak bisa bergerak, NoClip aktif).")
+        
+        hrp.CanCollide = false 
+        if h then h:Destroy() end
+        
+    else
+        btn.Text = "PHYS OFF"
+        warn("SINKRONISASI: Mencoba memulihkan Humanoid dan Fisika.")
+        
+        if not hrp.Parent:FindFirstChildOfClass("Humanoid") then
+            local new_h = Instance.new("Humanoid")
+            new_h.Parent = hrp.Parent
+            new_h.WalkSpeed = DEFAULT_WALKSPEED
+        end
+        
+        hrp.CanCollide = true 
+    end
+end
+
+-- FUNGSI INSTANT VELOCITY TELEPORT (IVT)
+execute_ivt_tp = function()
+    local h, hrp, char = get_fresh_parts()
+    if not hrp or not tp_pos then 
+        warn("IVT GAGAL: Posisi Base atau HRP tidak siap!")
+        return 
+    end
+    
+    if not is_ghost_mode then
+        warn("IVT GAGAL: Aktifkan MODE GHOST (GHOST ON) dulu!")
+        return
+    end
+
+    warn("IVT: Memulai Instant Velocity Teleport...")
+    
+    local target_pos = tp_pos.Position
+    local current_pos = hrp.Position
+    local direction = (target_pos - current_pos).Unit
+    local distance = (target_pos - current_pos).Magnitude
+
+    local human = char:FindFirstChildOfClass("Humanoid")
+    if human then
+        human.HipHeight = SAFE_HIPHEIGHT
+    end
+    
+    hrp.Velocity = direction * MAX_VELOCITY 
+    
+    repeat
+        rs.Heartbeat:Wait() 
+    until (hrp.Position - current_pos).Magnitude >= distance * 0.9 or (hrp.Position - target_pos).Magnitude < 5
+
+    hrp.Velocity = Vector3.new(0, 0, 0)
+    char:SetPrimaryPartCFrame(tp_pos)
+
+    if human then
+        human.HipHeight = DEFAULT_HIPHEIGHT
+    end
+
+    local phys_btn = action_bar and action_bar:FindFirstChild("phys_btn")
+    if phys_btn and is_ghost_mode then
+        toggle_ghost_mode(phys_btn)
+    else
+        warn("SINKRONISASI: GHOST MODE sudah dimatikan atau tombol tidak ditemukan.")
+    end
+    
+    warn("IVT Berhasil! Rollback seharusnya tidak terjadi.")
+end
+
+-- [ D. IMPLEMENTASI GUI (PERMANEN - V18) ]
+local sg = Instance.new("ScreenGui")
+sg.Name = "BrainrotHub_Stealth"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.IgnoreGuiInset = true
+sg.Parent = p:WaitForChild("PlayerGui")
+
+action_bar = Instance.new("Frame")
+action_bar.Name = "action_bar"
+action_bar.Size = UDim2.new(0, 200, 0, 40) 
+action_bar.Position = UDim2.new(1, -210, 1, -50) 
+action_bar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+action_bar.BorderColor3 = MAIN_COLOR
+action_bar.BorderSizePixel = 1
+action_bar.Parent = sg
+action_bar.ZIndex = 100 
+action_bar.Visible = true 
+action_bar.Active = true 
+action_bar.Draggable = true 
+
+-- FUNGSI TOMBOL DI ACTION BAR
+local function create_bar_button(name, posx_offset, callback)
+    local btn = Instance.new("TextButton")
+    btn.Name = name:gsub("%s+", ""):lower() .. "_btn" 
+    btn.Size = UDim2.new(0, 60, 1, 0)
+    btn.Position = UDim2.new(0, posx_offset, 0, 0)
+    btn.Text = name
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    btn.TextColor3 = MAIN_COLOR
+    btn.BorderSizePixel = 0
+    btn.Parent = action_bar
+    
+    btn.MouseButton1Click:Connect(function()
+        warn("DEBUG V18: Tombol '" .. name .. "' diklik.")
+        
+        if name == "SAVE" or name == "PHYS OFF" or name == "GHOST ON" then
+            callback(btn)
+        else
+            callback()
+        end
+    end) 
+    
+    return btn
+end
+
+-- PENEMPATAN TOMBOL
+local save_btn = create_bar_button("SAVE", 0, save_tp)
+local phys_btn = create_bar_button("PHYS OFF", 70, toggle_ghost_mode)
+phys_btn.Name = "phys_btn" 
+create_bar_button("GO!", 140, execute_ivt_tp)
