@@ -1,0 +1,163 @@
+local p = game:GetService("Players").LocalPlayer
+local rs = game:GetService("RunService")
+
+-- KONFIGURASI
+local PWS_WALKSPEED = 150
+local PWS_FORCE_MULTIPLIER = 100
+local PWS_STEP_DURATION = 0.03
+local DEFAULT_WALKSPEED = 16
+local TP_TOLERANCE = 5
+local MAIN_COLOR = Color3.fromRGB(0, 255, 255)
+
+-- STATUS
+local tp_pos = nil
+local is_physics_shutdown = false
+
+-- Utility Ambil Parts Fresh
+local function get_fresh_parts()
+	local char = p.Character
+	if not char then return nil, nil, nil end
+	local h = char:FindFirstChildOfClass("Humanoid")
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not h or not hrp then return nil, nil, nil end
+	return h, hrp, char
+end
+
+-- Wait aman
+local function safe_wait(duration)
+	local start_time = tick()
+	repeat rs.Heartbeat:Wait() until (tick() - start_time) >= duration
+end
+
+-- SAVE Posisi
+local function save_tp(btn)
+	local _, hrp = get_fresh_parts()
+	if hrp then
+		tp_pos = hrp.CFrame
+		btn.Text = "SAVED"
+		warn("TP: Posisi Base Tersimpan!")
+	else
+		warn("TP GAGAL: Karakter tidak siap!")
+	end
+end
+
+-- Toggle Physics Shutdown
+local function toggle_physics_shutdown(btn)
+	local h, hrp = get_fresh_parts()
+	if not h or not hrp then
+		warn("PHYS GAGAL: Tidak ada HRP.")
+		return
+	end
+
+	is_physics_shutdown = not is_physics_shutdown
+	if is_physics_shutdown then
+		btn.Text = "PHYS ON"
+		warn("FISIKA DILUMPUHKAN: PlatformStand ON (NoClip Aktif).")
+		hrp.CanCollide = false
+		hrp.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+		h.PlatformStand = true
+		hrp.Velocity = Vector3.new(0, 0, 0)
+		h.WalkSpeed = PWS_WALKSPEED
+	else
+		btn.Text = "PHYS OFF"
+		warn("FISIKA DIPULIHKAN: Sinkronisasi Ulang Dipaksa.")
+		hrp.CanCollide = true
+		h.PlatformStand = false
+		hrp.CustomPhysicalProperties = nil
+		h.WalkSpeed = DEFAULT_WALKSPEED
+	end
+end
+
+-- Eksekusi PWS
+local function execute_stealth_pws()
+	local h, hrp, char = get_fresh_parts()
+	if not h or not hrp or not tp_pos then
+		warn("PWS GAGAL: Posisi Base tidak siap!")
+		return
+	end
+	if not is_physics_shutdown then
+		warn("PWS GAGAL: Aktifkan PHYSICS SHUTDOWN (PHYS ON) dulu!")
+		return
+	end
+
+	warn("PWS Dimulai: Velocity + Pivot Micro Correction...")
+	local target_pos = tp_pos.Position
+
+	while (hrp.Position - target_pos).Magnitude > TP_TOLERANCE do
+		local current_pos = hrp.Position
+		local direction = (target_pos - current_pos).Unit
+		hrp.Velocity = direction * PWS_FORCE_MULTIPLIER
+
+		local next_cframe = CFrame.new(
+			current_pos + direction * PWS_STEP_DURATION * PWS_WALKSPEED,
+			target_pos
+		)
+
+		if char.PrimaryPart then
+			char:PivotTo(next_cframe)
+		end
+
+		safe_wait(PWS_STEP_DURATION)
+
+		h, hrp, char = get_fresh_parts()
+		if not h or not hrp or not char then break end
+	end
+
+	if hrp and char then
+		hrp.Velocity = Vector3.new(0, 0, 0)
+		if char.PrimaryPart then
+			char:PivotTo(tp_pos)
+		end
+	end
+
+	warn("PWS REBORN Selesai. Matikan PHYS ON untuk mengunci Brainrot.")
+end
+
+-- GUI
+local sg = Instance.new("ScreenGui")
+sg.Name = "BrainrotHub_Stealth"
+sg.ResetOnSpawn = false
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.IgnoreGuiInset = true
+sg.Parent = p:WaitForChild("PlayerGui")
+
+local action_bar = Instance.new("Frame")
+action_bar.Size = UDim2.new(0, 200, 0, 40)
+action_bar.Position = UDim2.new(1, -210, 1, -50)
+action_bar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+action_bar.BorderColor3 = MAIN_COLOR
+action_bar.BorderSizePixel = 1
+action_bar.ZIndex = 100
+action_bar.Parent = sg
+action_bar.Active = true
+action_bar.Draggable = true
+action_bar.Visible = true
+
+-- Helper tombol
+local function create_bar_button(name, posx_offset, callback)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 60, 1, 0)
+	btn.Position = UDim2.new(0, posx_offset, 0, 0)
+	btn.Text = name
+	btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	btn.TextColor3 = MAIN_COLOR
+	btn.BorderSizePixel = 0
+	btn.ZIndex = 101
+	btn.Parent = action_bar
+
+	btn.MouseButton1Click:Connect(function()
+		warn("DEBUG V16.2: Tombol '" .. name .. "' diklik.")
+		if name == "SAVE" or name:match("PHYS") then
+			callback(btn)
+		else
+			callback()
+		end
+	end)
+
+	return btn
+end
+
+-- Tombol-tombol
+local save_btn = create_bar_button("SAVE", 0, save_tp)
+local phys_btn = create_bar_button("PHYS OFF", 70, toggle_physics_shutdown)
+create_bar_button("GO!", 140, execute_stealth_pws)
