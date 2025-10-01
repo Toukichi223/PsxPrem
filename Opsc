@@ -1,0 +1,223 @@
+local p = game:GetService("Players").LocalPlayer 
+local gui_target = p.PlayerGui 
+local rs = game:GetService("RunService")
+
+-- [ A. KONFIGURASI INTI & SAFETY ]
+local PWS_WALKSPEED = 150 
+local PWS_FORCE_MULTIPLIER = 100 
+local PWS_STEP_DURATION = 0.03 
+local DEFAULT_WALKSPEED = 16
+local TP_TOLERANCE = 5 
+local BUTTON_SIZE = UDim2.new(0, 40, 0, 40) 
+local MAIN_COLOR = Color3.fromRGB(0, 255, 255) 
+
+-- Variabel Status
+local tp_pos = nil 
+local is_physics_shutdown = false 
+
+-- [ B. FUNGSI UTILITY & SAFETY ]
+
+local function get_fresh_parts()
+    local current_char = p.Character
+    if not current_char then return nil, nil, nil end
+    local current_h = current_char:FindFirstChildOfClass("Humanoid")
+    local current_hrp = current_char:FindFirstChild("HumanoidRootPart")
+    if not current_h or not current_hrp then return nil, nil, nil end
+    return current_h, current_hrp, current_char 
+end
+
+local function safe_wait(duration)
+    local start_time = tick()
+    repeat
+        rs.Heartbeat:Wait()
+    until (tick() - start_time) >= duration
+end
+
+-- [ C. FUNGSI UTAMA LOGIKA ]
+
+-- FUNGSI SAVE TP (SV TP)
+local function save_tp(btn)
+    local _, hrp_current = get_fresh_parts()
+    if hrp_current then
+        tp_pos = hrp_current.CFrame 
+        btn.Text = "SAVED"
+        warn("TP: Posisi Base Tersimpan!")
+    else
+        warn("TP GAGAL: Karakter tidak siap!")
+    end
+end
+
+-- FUNGSI PHYSICS SHUTDOWN (Kunci Anti-Rollback/Base Lock)
+local function toggle_physics_shutdown(btn)
+    local h, hrp = get_fresh_parts()
+    if not h or not hrp then 
+        warn("PHYS GAGAL: Tidak ada HRP.")
+        return 
+    end
+    
+    is_physics_shutdown = not is_physics_shutdown
+    
+    if is_physics_shutdown then
+        btn.Text = "PHYS ON"
+        warn("FISIKA DILUMPUHKAN: PlatformStand ON (NoClip Aktif).")
+        
+        -- Kunci Fisika dan Tabrakan
+        hrp.CanCollide = false
+        hrp.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+        h.PlatformStand = true 
+        hrp.Velocity = Vector3.new(0, 0, 0)
+        h.WalkSpeed = PWS_WALKSPEED
+        
+    else
+        btn.Text = "PHYS OFF"
+        warn("FISIKA DIPULIHKAN: Sinkronisasi Ulang Dipaksa.")
+        
+        -- Pulihkan Fisika dan Kecepatan Default
+        hrp.CanCollide = true 
+        h.PlatformStand = false
+        hrp.CustomPhysicalProperties = nil
+        h.WalkSpeed = DEFAULT_WALKSPEED
+    end
+end
+
+-- FUNGSI STEALTH PATH-WALK SIMULATION (PWS) - REBORN
+local function execute_stealth_pws()
+    local h, hrp, char = get_fresh_parts()
+    if not h or not hrp or not tp_pos then 
+        warn("PWS GAGAL: Posisi Base tidak siap!")
+        return 
+    end
+    
+    if not is_physics_shutdown then
+        warn("PWS GAGAL: Aktifkan PHYSICS SHUTDOWN (PHYS ON) dulu!")
+        return
+    end
+
+    warn("PWS Dimulai: Velocity + CFrame Micro Correction...")
+    
+    local target_pos = tp_pos.Position
+    
+    -- Loop selama jarak masih signifikan
+    while (hrp.Position - target_pos).Magnitude > TP_TOLERANCE do
+        
+        local current_pos = hrp.Position
+        
+        -- 1. Hitung arah
+        local direction = (target_pos - current_pos).Unit
+        
+        -- 2. APLIKASIKAN VELOCITY (Input Fisika yang Dipercaya Server)
+        hrp.Velocity = direction * PWS_FORCE_MULTIPLIER 
+        
+        -- 3. CORRECTION CFrame (Memastikan klien bergerak sesuai simulasi)
+        local next_cframe = CFrame.new(current_pos + direction * PWS_STEP_DURATION * PWS_WALKSPEED, target_pos)
+        char:SetPrimaryPartCFrame(next_cframe)
+        
+        -- 4. JEDA MIKRO (Sinkronisasi per langkah)
+        safe_wait(PWS_STEP_DURATION) 
+        
+        -- Pengecekan stabilitas loop
+        h, hrp, char = get_fresh_parts()
+        if not h or not hrp or not char then break end
+    end
+    
+    -- 5. Finalisasi (Teleportasi Sisa Jarak Kecil)
+    if hrp and char then
+        hrp.Velocity = Vector3.new(0, 0, 0)
+        char:SetPrimaryPartCFrame(tp_pos)
+    end
+    
+    warn("PWS REBORN Selesai. Matikan PHYS ON untuk mengunci Brainrot.")
+end
+
+-- [ D. IMPLEMENTASI GUI (STEALTH ANDROID - KOREKSI FINAL) ]
+
+local sg = Instance.new("ScreenGui")
+sg.Name = ("BrainrotHub_Stealth") 
+sg.ResetOnSpawn = false
+sg.Parent = gui_target
+sg.Modal = true 
+
+local toggle_btn = Instance.new("TextButton")
+toggle_btn.Size = BUTTON_SIZE
+toggle_btn.Position = UDim2.new(1, -50, 1, -120) -- Kanan Bawah
+toggle_btn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+toggle_btn.TextColor3 = MAIN_COLOR
+toggle_btn.Text = "🧠" 
+toggle_btn.BorderSizePixel = 1
+toggle_btn.BorderColor3 = MAIN_COLOR
+toggle_btn.Parent = sg
+toggle_btn.ZIndex = 100 -- Prioritas tertinggi
+toggle_btn.Active = true 
+toggle_btn.Draggable = true 
+
+local action_bar = Instance.new("Frame")
+action_bar.Size = UDim2.new(0, 200, 0, 40) 
+action_bar.Position = UDim2.new(1, -250, 1, -120) 
+action_bar.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+action_bar.BorderColor3 = MAIN_COLOR
+action_bar.BorderSizePixel = 1
+action_bar.Parent = sg
+action_bar.ZIndex = 99 
+action_bar.Visible = false 
+action_bar.Active = true 
+
+local is_bar_visible = false
+
+-- FUNGSI TOMBOL DI ACTION BAR (SUPER STABIL + DEBUG)
+local function create_bar_button(name, posx_offset, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 60, 1, 0)
+    btn.Position = UDim2.new(0, posx_offset, 0, 0)
+    btn.Text = name
+    btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    btn.TextColor3 = MAIN_COLOR
+    btn.BorderSizePixel = 0
+    btn.Parent = action_bar
+    
+    -- Koneksi yang Lebih Tegas + Mode Debug
+    btn.MouseButton1Click:Connect(function()
+        warn("DEBUG V13: Tombol '" .. name .. "' diklik. Memanggil fungsi.")
+        
+        -- Periksa apakah fungsi membutuhkan parameter 'btn'
+        if name == "SAVE" or name == "PHYS OFF" or name == "PHYS ON" then
+            callback(btn)
+        else
+            callback()
+        end
+    end) 
+    
+    return btn
+end
+
+-- PENEMPATAN TOMBOL (Horizontal)
+local save_btn = create_bar_button("SAVE", 0, function(btn) 
+    save_tp(btn) 
+end)
+
+local phys_btn = create_bar_button("PHYS OFF", 70, function(btn) 
+    toggle_physics_shutdown(btn) 
+end)
+
+create_bar_button("GO!", 140, execute_stealth_pws)
+
+
+-- LOGIKA TOGGLE 
+toggle_btn.MouseButton1Click:Connect(function()
+    is_bar_visible = not is_bar_visible
+    
+    if is_bar_visible then
+        action_bar.Position = UDim2.new(toggle_btn.Position.X.Scale, toggle_btn.Position.X.Offset - action_bar.Size.X.Offset - 5, toggle_btn.Position.Y.Scale, toggle_btn.Position.Y.Offset)
+        action_bar.Visible = true
+        toggle_btn.Text = "❌" 
+    else
+        action_bar.Visible = false
+        toggle_btn.Text = "🧠" 
+    end
+end)
+
+-- Sinkronisasi Posisi
+toggle_btn.Changed:Connect(function(prop)
+    if prop == "Position" and action_bar.Visible then
+        action_bar.Position = UDim2.new(toggle_btn.Position.X.Scale, toggle_btn.Position.X.Offset - action_bar.Size.X.Offset - 5, toggle_btn.Position.Y.Scale, toggle_btn.Position.Y.Offset)
+    end
+end)
